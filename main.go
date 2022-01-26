@@ -9,43 +9,45 @@ import (
 )
 
 type result struct {
-	result string;
-	name string;
+	result string
+	index   int
 }
 
-func run(c chan result, delay int, cmd string, args []string) {
+func run(c chan result, delay int, index int, cmd string) {
 	for {
-		out, err := exec.Command(cmd, args...).Output()
+		out, err := exec.Command("sh", "-c", cmd).Output()
 
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		c<-result{ name: cmd, result: string(out)}
-
+		c <- result{index: index, result: string(out)}
 		time.Sleep(time.Duration(delay) * time.Second)
 	}
 }
 
-// type cmd struct {
-// 	cmd string;
-// 	args []string;
-// }
+type cmd struct {
+	delay int
+	cmd   string
+}
 
 func main() {
+	cmds := []cmd{
+		{10, "node --no-warnings /tmp/szymon/index.js"},
+		{1, "date \"+%Y-%m-%d %l:%M:%S %p\""},
+	}
+
 	c := make(chan result)
-	results := map[string]string{}
-	go run(c, 5, "node", []string{"--no-warnings", "/tmp/szymon/index.js"})
-	go run(c, 1, "date", []string{"+%Y-%m-%d %l:%M:%S %p"})
+	results := make([]string, len(cmds))
+
+	for i, e := range cmds {
+		results[i] = "loading…"
+		go run(c, e.delay, i, e.cmd)
+	}
 
 	for {
-		msg := <- c
-		results[msg.name] = strings.Replace(msg.result, "\n", "", -1)
-
-		final := []string{}
-		for _, result := range results {
-			final = append(final, result)
-		}
-		fmt.Println(strings.Join(final, " | "))
+		msg := <-c
+		results[msg.index] = strings.Replace(msg.result, "\n", "", -1)
+		fmt.Println(strings.Join(results, " | "))
 	}
 }
