@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 
@@ -15,56 +17,69 @@ type result struct {
 	index  int
 }
 
-func run(channel chan result, interval int, index int, cmd string) {
+type cmd struct {
+	Interval int
+	Cmd      string
+}
+
+type config struct {
+	Separator string
+	Cmds      []cmd
+}
+
+func run(channel chan result, index int, c cmd) {
 	for {
-		out, err := exec.Command("sh", "-c", cmd).Output()
+		out, err := exec.Command("sh", "-c", c.Cmd).Output()
 
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		channel <- result{index: index, result: string(out)}
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(time.Duration(c.Interval) * time.Second)
 	}
 }
 
-type cmd struct {
-	Interval int
-	Cmd   string
+// TODO: check if valid config provided
+func readConfig(path string) config {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("error reading config file: %v", err)
+	}
+
+	conf := config{}
+	err = yaml.Unmarshal([]byte(data), &conf)
+	if err != nil {
+		log.Fatalf("error parsing config file: %v", err)
+	}
+	return conf
 }
 
-type config struct {
-	Separator string
-	Cmds []cmd
-}
-
+var configPath string
 
 func main() {
-	conf := `
-separator: ' | '
-cmds:
-  - cmd: node --no-warnings /tmp/szymon/index.js
-    interval: 5
-  - cmd: date "+%Y-%m-%d %l:%M:%S %p"
-    interval: 1
-`
-	c := config{}
-	err := yaml.Unmarshal([]byte(conf), &c)
-	if err != nil {
-		log.Fatalf("error: %v", err)
+	if len(os.Args) == 2 {
+		configPath = os.Args[1]
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		configPath = path.Join(home, ".config/timer.yaml")
 	}
+	conf := readConfig(configPath)
 
 	channel := make(chan result)
-	results := make([]string, len(c.Cmds))
+	results := make([]string, len(conf.Cmds))
 
-	for i, e := range c.Cmds {
+	for i, e := range conf.Cmds {
 		results[i] = "loading…"
-		go run(channel, e.Interval, i, e.Cmd)
+		go run(channel, i, e)
 	}
 
 	for {
 		msg := <-channel
 		results[msg.index] = strings.Replace(msg.result, "\n", "", -1)
-		fmt.Println(strings.Join(results, c.Separator))
+		fmt.Println(strings.Join(results, conf.Separator))
 	}
 }
