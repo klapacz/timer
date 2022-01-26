@@ -6,14 +6,16 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 type result struct {
 	result string
-	index   int
+	index  int
 }
 
-func run(c chan result, delay int, index int, cmd string) {
+func run(channel chan result, interval int, index int, cmd string) {
 	for {
 		out, err := exec.Command("sh", "-c", cmd).Output()
 
@@ -21,33 +23,48 @@ func run(c chan result, delay int, index int, cmd string) {
 			log.Fatal(err)
 		}
 
-		c <- result{index: index, result: string(out)}
-		time.Sleep(time.Duration(delay) * time.Second)
+		channel <- result{index: index, result: string(out)}
+		time.Sleep(time.Duration(interval) * time.Second)
 	}
 }
 
 type cmd struct {
-	delay int
-	cmd   string
+	Interval int
+	Cmd   string
 }
 
+type config struct {
+	Separator string
+	Cmds []cmd
+}
+
+
 func main() {
-	cmds := []cmd{
-		{10, "node --no-warnings /tmp/szymon/index.js"},
-		{1, "date \"+%Y-%m-%d %l:%M:%S %p\""},
+	conf := `
+separator: ' | '
+cmds:
+  - cmd: node --no-warnings /tmp/szymon/index.js
+    interval: 5
+  - cmd: date "+%Y-%m-%d %l:%M:%S %p"
+    interval: 1
+`
+	c := config{}
+	err := yaml.Unmarshal([]byte(conf), &c)
+	if err != nil {
+		log.Fatalf("error: %v", err)
 	}
 
-	c := make(chan result)
-	results := make([]string, len(cmds))
+	channel := make(chan result)
+	results := make([]string, len(c.Cmds))
 
-	for i, e := range cmds {
+	for i, e := range c.Cmds {
 		results[i] = "loading…"
-		go run(c, e.delay, i, e.cmd)
+		go run(channel, e.Interval, i, e.Cmd)
 	}
 
 	for {
-		msg := <-c
+		msg := <-channel
 		results[msg.index] = strings.Replace(msg.result, "\n", "", -1)
-		fmt.Println(strings.Join(results, " | "))
+		fmt.Println(strings.Join(results, c.Separator))
 	}
 }
