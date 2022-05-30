@@ -1,6 +1,6 @@
-separator: ' | '
+separator: " | "
 cmds:
-  - cmd: node --no-warnings /tmp/szymon/index.js
+  - cmd: date "+%S"
     interval: 5
-  - cmd: date "+%Y-%m-%d %l:%M:%S %p"
+  - cmd: date "+%S"
     interval: 1
